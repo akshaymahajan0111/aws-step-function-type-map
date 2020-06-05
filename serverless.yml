@@ -1,0 +1,48 @@
+service: stepfunctions-data-passing
+
+plugins:
+  - serverless-step-functions
+  - serverless-pseudo-parameters
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  profile: ${opt:profile, 'personal'}
+  timeout: 30
+  region: eu-west-1
+
+functions:
+  inputDataController:
+    handler: handler.inputDataController
+  calculator:
+    handler: handler.calculator
+
+stepFunctions:
+  stateMachines:
+    Calculator:
+      events:
+        - http:
+            path: execute   # Use this api gateway endpoint to trigger State Machine manually
+            method: get
+            # authorizer: authorizerFunc
+        - schedule:     # Schedule to execute the State Machine every 3hours
+            rate: cron(0 */3 * * ? *)
+      name: ${opt:stage}-parallel-processing
+      definition:
+        Comment: "AWS step function example to 1.Pass data between states 2.Iterate and process the data in parallel"
+        StartAt: "InputDataController"
+        States:
+          InputDataController:
+            Type: Task
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-inputDataController"
+            Next: "Processor"
+          Processor:
+            Type: Map
+            Iterator: 
+              StartAt: "Calculate"
+              States:
+                Calculate:
+                  Type: Task
+                  Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-calculator"
+                  End: true
+            End: true
